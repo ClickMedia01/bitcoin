@@ -1,0 +1,71 @@
+name: Build Bitcoin Core (Windows 64-bit via Depends)
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libtool \
+            autotools-dev \
+            automake \
+            pkg-config \
+            bsdmainutils \
+            curl \
+            git \
+            python3 \
+            g++-mingw-w64-x86-64 \
+            patch \
+            unzip
+
+      - name: Build depends for Windows 64-bit
+        run: |
+          cd depends
+          make HOST=x86_64-w64-mingw32 -j"$(nproc)"
+
+      - name: Configure Bitcoin Core with depends
+        run: |
+          ./autogen.sh
+          export CONFIG_SITE=$(pwd)/depends/x86_64-w64-mingw32/share/config.site
+          # Example: disable GUI, tests, benchmarks (customize to your needs)
+          ./configure \
+            --prefix=/ \
+            --disable-tests \
+            --disable-bench \
+            --without-gui
+
+      - name: Compile Bitcoin Core
+        run: |
+          make -j"$(nproc)"
+
+      - name: Verify binaries
+        run: |
+          file src/bitcoind.exe
+          file src/bitcoin-cli.exe
+          file src/bitcoin-tx.exe
+
+      - name: Package Windows binaries
+        run: |
+          zip -r bitcoin-core-windows-binaries.zip \
+            src/bitcoind.exe \
+            src/bitcoin-cli.exe \
+            src/bitcoin-tx.exe
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: bitcoin-core-windows-binaries.zip
+          asset_name: bitcoin-core-windows-binaries.zip
+          asset_content_type: application/zip
